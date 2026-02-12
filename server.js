@@ -9,8 +9,8 @@ const SUBDOMAINS = {
   "server.bloxd.io": "https://server.bloxd.io"
 };
 
-// Rewrites URLs inside text-based responses
-function rewriteBody(proxyRes, req, res) {
+// Only rewrite HTML, never JS
+function rewriteHTML(proxyRes, req, res) {
   let body = Buffer.from([]);
 
   proxyRes.on("data", chunk => {
@@ -22,18 +22,17 @@ function rewriteBody(proxyRes, req, res) {
 
     const proxyBase = `${req.protocol}://${req.get("host")}`;
 
-    // Rewrite all Bloxd URLs → proxy URLs
     Object.keys(SUBDOMAINS).forEach(sub => {
       const real = `https://${sub}`;
       const fake = `${proxyBase}/__${sub}`;
       text = text.replaceAll(real, fake);
     });
 
+    res.setHeader("content-type", "text/html");
     res.send(text);
   });
 }
 
-// Build proxy with rewrite support
 function makeProxy(target) {
   return createProxyMiddleware({
     target,
@@ -44,11 +43,11 @@ function makeProxy(target) {
       proxyReq.setHeader("Host", new URL(target).host);
     },
     onProxyRes: (proxyRes, req, res) => {
-      const contentType = proxyRes.headers["content-type"] || "";
+      const type = proxyRes.headers["content-type"] || "";
 
-      // Only rewrite text-based content
-      if (contentType.includes("text") || contentType.includes("javascript")) {
-        rewriteBody(proxyRes, req, res);
+      // Only rewrite HTML
+      if (type.includes("text/html")) {
+        rewriteHTML(proxyRes, req, res);
       } else {
         proxyRes.pipe(res);
       }
@@ -69,5 +68,5 @@ app.use("/", makeProxy("https://bloxd.io"));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Auto‑rewrite Bloxd proxy running on port", PORT);
+  console.log("Safe Bloxd proxy running on port", PORT);
 });
